@@ -1,0 +1,851 @@
+---
+title: "Thesis Code"
+author: "Nicholas Johnson"
+date: "2025-01-23"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading Packages
+```{r}
+library(tidyverse)
+library(tibble)
+library(MASS)
+library(ordinal)
+library(pscl)
+library(nnet)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(ggeffects)
+library(car)
+library(effects)
+library(officer)
+library(flextable)
+library(nnet)
+library(broom)
+library(knitr)
+```
+
+
+## Reorganize NJ1-3 to be 2 rows: frame and value, using pivot longer/wider. 
+```{r}
+load("C:/Users/nickj/OneDrive/Desktop/Thesis2025/NJ_Omnibus_1 (1).rdata")
+data <- NJ_Omnibus_1
+x <- pivot_longer(data, cols = c(NJ1, NJ2, NJ3),
+               names_to = "Frame",
+               values_to = "Importance",
+               values_drop_na = TRUE)
+```
+
+## Convert all necessary responses to their corresponding type (character/factor)
+```{r}
+
+x$Frame <- as.factor(x$Frame)
+x$Frame <- relevel(x$Frame, ref = "NJ3")
+```
+
+
+
+## Organizing Data for Ordinal Regression
+```{r}
+## Reclassifying variables
+x$NJ6 <- as.factor(x$NJ6)
+x$NJ11 <- as.factor(x$NJ11)
+x$racethn <- as.factor(x$racethn)
+x$sex <- as.factor(x$sex)
+x$D5 <- as.numeric(x$D5)
+x$D8 <- as.factor(x$D8)
+x$D1 <- as.factor(x$D1)
+x$Importance <- factor(x$Importance, ordered = T)
+x$NJ4 <- factor(x$NJ4, ordered = T)
+x$NJ5 <- factor(x$NJ5, ordered = T)
+```
+
+## Running an Ordinal Model to Predict the Importance Assigned to SSEC Reform
+```{r}
+## Running the ordinal logistic regression with pscl package
+ordinal_model_imp <- clm(Importance ~ Frame + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D5 + D8, data = x)
+
+## Summarizing the model
+summary(ordinal_model_imp)
+pR2(ordinal_model_imp)
+```
+
+## Rerun the regression as OLS for additional vetting
+```{r}
+lm_importance<- lm(as.numeric(x$Importance)~x$Frame + as.factor(x$NJ6) + x$NJ7+
+x$NJ8+ x$NJ9 +x$NJ10_1 +as.factor(x$NJ11) + x$NJ12 + as.factor(x$D1)+
+  as.factor(x$sex) + as.factor(x$agecat)+ x$education + as.factor(x$racethn) +
+  x$D5 + as.factor(x$D8) + as.factor(x$vote))
+
+
+summary(lm_importance)
+
+## OLS confirms nonsignificance of frames, significance of other predictors.
+
+```
+## Trump Ordinal Regression Interpreting Incomes as Cutoffs
+```{r}
+## Defining the cutoff point for incomes above and below 34,00-44,000 USD
+## As described by Trump, those above this threshold are eligible to recieve
+## Tax cuts. 
+
+x$D5 <- as.numeric(x$D5)
+trump <- x |> filter(D5<4 | D5>5) |> mutate(cutoff = ifelse(D5 > 5, 1, 0)) # high values get a 1
+
+trump$cutoff <- as.factor(trump$cutoff)
+
+ordinal_model_t_cutoff <- clm(NJ4 ~ Frame*cutoff + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D8, data = trump)
+
+summary(ordinal_model_t_cutoff)
+
+# Delineating between groups at incomes who are guaranteed to benefit from Trump's
+# policy, and those who are guaranteed to not benefit from Trumps policy is
+# significant. However, individualist and collectivist frames have no impacts
+# on these groups.
+```
+
+## Running an Ordinal Model to Predict Support for Trump's SSEC Policy (no cutoff)
+```{r}
+## Running the ordinal logistic regression with pscl package
+ordinal_model_t <- clm(NJ4 ~ Frame + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D5 + D8, data = x)
+
+## Summarizing the model
+summary(ordinal_model_t)
+pR2(ordinal_model_t)
+
+## Even ignoring the cutoff, people at higher incomes support the policy more than
+## People at lower incomes. 
+```
+
+## Re-running this model with an interaction term
+```{r}
+## The goal is to investigate whether income and frame have any interaction
+ordinal_model_t_int <- clm(NJ4 ~ Frame*D5 + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D8, data = x)
+
+## Summarizing the model
+summary(ordinal_model_t_int)
+
+## Does income influence how people percieve themselves in relation to the policy
+## And subsequently influence the significance of the frames?
+
+## The data suggests no - not with these frames.
+
+```
+
+## Rerun Regression as OLS for additional vetting
+```{r}
+# Trump Policy Support
+lm_trump<- lm(as.numeric(x$NJ4)~x$Frame + as.factor(x$NJ6) + x$NJ7+ x$NJ8+ x$NJ9 +x$NJ10_1 +
+           as.factor(x$NJ11) + x$NJ12 + as.factor(x$D1)+ as.factor(x$sex) + as.factor(x$agecat)
+         + x$education + as.factor(x$racethn) + x$D5 + as.factor(x$D8)
+         + as.factor(x$vote))
+
+summary(lm_trump)
+
+## OLS results confirm non-significance of frames, significance of other predictors.
+```
+
+## Running an Ordinal Model to Predict Support for Harris' SSEC Policy
+```{r}
+## Running the model
+ordinal_model_h <- clm(NJ5 ~ Frame + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D5 + D8, data = x)
+
+## Summarizing the model
+summary(ordinal_model_h)
+pR2(ordinal_model_h)
+
+
+
+```
+
+## Rerun regression as OLS for additional vetting
+```{r}
+lm3<- lm(as.numeric(x$NJ5)~x$Frame + as.factor(x$NJ6) + x$NJ7+ x$NJ8+ x$NJ9 +x$NJ10_1 +
+           as.factor(x$NJ11) + x$NJ12 + as.factor(x$D1)+ as.factor(x$sex) + as.factor(x$agecat)
+         + x$education + as.factor(x$racethn) + x$D5 + as.factor(x$D8)
+         + as.factor(x$vote))
+
+summary(lm3)
+
+## OLS confirms non significance of frames, significance of other predictors
+```
+
+## Re-running this model with an interaction term
+```{r}
+## The goal is to investigate whether income and frame have any interaction
+ordinal_model_h_int <- clm(NJ5 ~ Frame*D5 + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D8, data = x)
+
+## Summarizing the model
+summary(ordinal_model_h_int)
+
+## Does income influence how people percieve themselves in relation to the policy
+## And subsequently influence the significance of the frames?
+
+## The data suggests no - not with these frames.
+
+```
+
+## Plotting Regression Outputs
+
+## Confidence Intervals for Ordinal Regression on SSEC Reform Importance by Frame
+```{r}
+
+# Step 1: Compute predicted probabilities for Frame
+frame_effect <- ggpredict(ordinal_model_imp, terms = "Frame")
+
+# Step 2: Convert to data.frame
+frame_effect <- as.data.frame(frame_effect)
+
+# Step 3: Relabel response categories
+frame_effect$response.label <- factor(frame_effect$response.level, 
+                                      levels = c("1", "2", "3", "4", "5"),
+                                      labels = c("Not Important at All", 
+                                                 "Mildly Unimportant", 
+                                                 "Neither Important nor Unimportant", 
+                                                 "Mildly Important", 
+                                                 "Important"))
+
+# Step 4: Relabel Frame categories
+frame_effect$x <- factor(frame_effect$x,
+                         levels = c("NJ3", "NJ1", "NJ2"),
+                         labels = c("Control", "Collectivist", "Individualist"))
+
+# Step 5: Plot with proper groupings and restored colors
+ggplot(frame_effect, aes(x = x, y = predicted, 
+                         ymin = conf.low, ymax = conf.high,
+                         color = response.label, 
+                         shape = response.label,
+                         group = response.label)) +   # <-- this restores proper grouping for lines and legend
+
+  # Reference lines
+  geom_hline(yintercept = seq(0, 1, by = 0.1), color = "gray90", linetype = "dotted") +
+
+  # Confidence intervals
+  geom_errorbar(linewidth = 1, position = position_dodge(width = 0.4), width = 0.15, na.rm = TRUE) +  
+
+  # Points
+  geom_point(size = 3, position = position_dodge(width = 0.4), na.rm = TRUE) +  
+
+  # Color scale
+  scale_color_manual(name = "Level of Importance", 
+                     values = c("Not Important at All" = "#440154FF", 
+                                "Mildly Unimportant" = "#3B528BFF", 
+                                "Neither Important nor Unimportant" = "#21908CFF", 
+                                "Mildly Important" = "#5DC863FF", 
+                                "Important" = "#800000"))+
+
+  # Shape scale
+  scale_shape_manual(name = "Level of Importance", 
+                     values = c("Not Important at All" = 19, 
+                                "Mildly Unimportant" = 19, #from 17
+                                "Neither Important nor Unimportant" = 19, #from 15
+                                "Mildly Important" = 19, #from 18
+                                "Important" = 19)) + #from 16
+
+  # Y-Axis
+  scale_y_continuous("Predicted Probability", limits = c(0, 1), breaks = seq(0, 1, by = 0.1)) +
+
+  # Labels
+  labs(subtitle = str_wrap("How Respondents Ranked SSEC Reform Importance Across Frames"),
+       x = "Frame Recieved by Group",
+       y = "Predicted Probability of Ranking")+
+  
+# THEME - Larger, Clean & Top Right Legend
+  theme_minimal(base_size = 14) +  
+  theme(legend.position = c(2, 1),   # Top Right
+        legend.justification = c(1, 1),
+        legend.background = element_rect(fill = "white", color = NA),
+        legend.key.size = unit(0.8, "cm"),
+        legend.text = element_text(size = 11),
+        legend.title = element_text(size = 12, face = "bold"),
+        panel.grid.major.y = element_line(color = "gray85", linetype = "dotted"),
+        axis.text.x = element_text(size = 12))
+
+ggsave("framing_plot_word_ready.png", width = 7, height = 5, dpi = 450)
+
+```
+
+
+## Trump Policy Facet Graph
+```{r}
+x$D5 <- as.numeric(x$D5)
+trump <- x |> filter(D5<4 | D5>5) |> mutate(Cutoff_Income = ifelse(D5 > 5, 1, 0)) # high values get a 1
+
+trump$Cutoff_Income <- as.factor(trump$Cutoff_Income)
+
+ordinal_model_t_cutoff <- clm(NJ4 ~ Frame*Cutoff_Income + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D8, data = trump)
+
+ordinal_model_t_cutoff_no <- clm(NJ4 ~ Frame + Cutoff_Income + NJ6 + NJ7+ NJ8+ NJ9 +NJ10_1 +
+           NJ11 + NJ12 + D1 + sex + agecat+ education + racethn + D8, data = trump)
+
+frame_income_effect_trump <- ggpredict(ordinal_model_t_cutoff, terms = c("Frame", "Cutoff_Income"))
+print(frame_income_effect_trump)
+
+
+
+# Step 2: Convert to data.frame and rename the interaction variable properly
+frame_income_effect_trump <- as.data.frame(frame_income_effect_trump)
+
+
+# Step 4: Frame relabeling (optional)
+frame_income_effect_trump$Frame <- factor(frame_income_effect_trump$x,
+                                          levels = c("NJ3", "NJ1", "NJ2"),
+                                          labels = c("Control", "Collectivist", "Individualist"))
+
+# Step 5: Response label relabeling
+frame_income_effect_trump$response.label <- factor(frame_income_effect_trump$response.level,
+                                                   levels = c("1", "2", "3", "4", "5"),
+                                                   labels = c("Completely Opposed", 
+                                                              "Somewhat Opposed", 
+                                                              "Neutral", 
+                                                              "Somewhat Supportive", 
+                                                              "Completely Supportive"))
+
+#Step 6: Income Group Relabeling
+frame_income_effect_trump$Income_group <- factor(frame_income_effect_trump$group,
+                                                   levels = c("0", "1"),
+                                                   labels = c("Below Income Cutoff", 
+                                                              "Above Income Cutoff"))
+
+# Step 6: Now include `Income` inside the ggplot() data
+
+ggplot(frame_income_effect_trump, aes(x = Frame, y = predicted, 
+                                      ymin = conf.low, ymax = conf.high,
+                                      color = response.label,
+                                      shape = response.label,
+                                      group = interaction(response.label, Income_group))) +
+
+  geom_hline(yintercept = seq(0, 1, by = 0.1), color = "gray90", linetype = "dotted") +
+
+  geom_errorbar(linewidth = 0.8, 
+                 position = position_dodge(width = 0.6), width = 0.15,  # <-- wider dodge
+                 na.rm = TRUE) +  
+
+  geom_point(size = 3, 
+             position = position_dodge(width = 0.6),   # <-- wider dodge
+             na.rm = TRUE) +  
+
+  scale_color_manual(name = "Level of Support",
+                     values = c("Completely Opposed" = "#440154FF",
+                                "Somewhat Opposed" = "#3B528BFF",
+                                "Neutral" = "#21908CFF",
+                                "Somewhat Supportive" = "#5DC863FF",
+                                "Completely Supportive" = "#800000")) +
+
+  scale_shape_manual(name = "Level of Support",
+                     values = c(19, 19, 19, 19, 19)) +  # optional: use different shapes
+
+  scale_y_continuous("Predicted Probability", limits = c(0, 1), breaks = seq(0, 1, by = 0.1)) +
+
+  labs(subtitle = "Predicted Support for Social Security Reform by Frame × Income",
+       x = "Frame",
+       y = "Predicted Probability") +
+
+  facet_wrap(~ Income_group) +    
+
+  theme_minimal(base_size = 14) +  
+  theme(legend.position = c(1, 1),
+        legend.justification = c(1, 1),
+        panel.grid.major.y = element_line(color = "gray85", linetype = "dotted"),
+        axis.text.x = element_text(size = 12))
+
+ggsave("framing_interaction_plot_word.png", width = 7, height = 5, dpi = 450)
+```
+
+## Plot Ordinal Model Harris Policy
+```{r}
+# Compute predicted probabilities for Frame
+frame_effect_h <- ggpredict(ordinal_model_h, terms = "Frame")
+
+
+# Step 2: Convert to data.frame
+frame_effect_h <- as.data.frame(frame_effect_h)
+
+# Step 3: Relabel response categories
+frame_effect_h$response.label <- factor(frame_effect_h$response.level, 
+                                      levels = c("1", "2", "3", "4", "5"),
+                                      labels = c("Completely Opposed", 
+                                                              "Somewhat Opposed", 
+                                                              "Neutral", 
+                                                              "Somewhat Supportive", 
+                                                              "Completely Supportive"))
+
+# Step 4: Relabel Frame categories
+frame_effect_h$x <- factor(frame_effect_h$x,
+                         levels = c("NJ3", "NJ1", "NJ2"),
+                         labels = c("Control", "Collectivist", "Individualist"))
+
+# Step 5: Plot with proper groupings and restored colors
+ggplot(frame_effect_h, aes(x = x, y = predicted, 
+                         ymin = conf.low, ymax = conf.high,
+                         color = response.label, 
+                         shape = response.label,
+                         group = response.label)) +   # <-- this restores proper grouping for lines and legend
+
+  # Reference lines
+  geom_hline(yintercept = seq(0, 1, by = 0.1), color = "gray90", linetype = "dotted") +
+
+  # Confidence intervals
+  geom_errorbar(linewidth = 1, position = position_dodge(width = 0.6),width = 0.15, na.rm = TRUE) +  
+
+  # Points
+  geom_point(size = 3, position = position_dodge(width = 0.6), na.rm = TRUE) +  
+
+  # Color scale
+  scale_color_manual(name = "Level of Support", 
+                     values = c("Completely Opposed" = "#440154FF",
+                                "Somewhat Opposed" = "#3B528BFF",
+                                "Neutral" = "#21908CFF",
+                                "Somewhat Supportive" = "#5DC863FF",
+                                "Completely Supportive" = "#800000")) +
+
+  # Shape scale
+  scale_shape_manual(name = "Level of Support", 
+                     values = c("Completely Opposed" = 19, 
+                                "Somewhat Opposed" = 19, #from 17
+                                "Neutral" = 19, #from 15
+                                "Somewhat Supportive" = 19, #from 18
+                                "Completely Supportive" = 19)) + #from 16
+
+  # Y-Axis
+  scale_y_continuous("Predicted Probability", limits = c(0, 1.0), breaks = seq(0, 1, by = 0.1)) +
+
+  # Labels
+  labs(subtitle = str_wrap("How Respondents Felt About Harris' Policy, Across Frames"),
+       x = "Frame Recieved by Group",
+       y = "Predicted Probability of Support Level")+
+  
+# THEME - Larger, Clean & Top Right Legend
+  theme_minimal(base_size = 14) +  
+  theme(legend.position = c(1, 1),   # Top Right
+        legend.justification = c(1, 1),
+        legend.background = element_rect(fill = "white", color = NA),
+        legend.key.size = unit(0.8, "cm"),
+        legend.text = element_text(size = 11),
+        legend.title = element_text(size = 12, face = "bold"),
+        panel.grid.major.y = element_line(color = "gray85", linetype = "dotted"),
+        axis.text.x = element_text(size = 12))
+
+ggsave("framing_plot_harris_word.png", width = 7, height = 5, dpi = 450)
+
+```
+
+
+## Experiment Part 2: Voting Patterns
+
+## Do Voters' Preferences Match their Votes
+```{r}
+x <- x |> 
+  mutate(SupportCategory_4 = case_when(
+    NJ4 %in% c(4, 5) ~ "Support",
+    NJ4 == 3 ~ "Neutral",
+    NJ4 %in% c(1, 2) ~ "Not Support"
+  ))
+
+x <- x |> 
+  mutate(SupportCategory_5 = case_when(
+    NJ5 %in% c(4, 5) ~ "Support",
+    NJ5 == 3 ~ "Neutral",
+    NJ5 %in% c(1, 2) ~ "Not Support"
+  ))
+
+# Calculate the percentage of "Not Support" voters for each candidate
+non_support_summary_trump <- x |> 
+  group_by(vote) |> 
+  summarize(
+    Total_Voters = n(),
+    Non_Support_Voters = sum(SupportCategory_4 == "Not Support"),
+    Percentage_Non_Support = (Non_Support_Voters / Total_Voters) * 100
+  )
+
+# Print results
+print(non_support_summary_trump)
+# 17 percent of Trump supporters do not support Trump's policies, while 22% of
+# Harris voters did not support Trump's policies.
+
+# Calculate the percentage of "Not Support" voters for each candidate for Harris Policy
+non_support_summary_harris <- x |> 
+  group_by(vote) |> 
+  summarize(
+    Total_Voters = n(),
+    Non_Support_Voters = sum(SupportCategory_5 == "Not Support"),
+    Percentage_Non_Support = (Non_Support_Voters / Total_Voters) * 100
+  )
+
+# Print results
+print(non_support_summary_harris)
+# 27% of Trump Supporters do not support Harris' policy. Conversely, 18 percent 
+# of Harris supporters do not support her own policy. 
+
+# The first table analyzes the percentage of each category of voters who do (not)
+# support Trump's policy. 
+
+# The second table analyzes the percentage of each category of voters who do (not)
+# Support Harris
+```
+
+
+```{r}
+# Calculate the percentage of "Support" voters for each candidate Harris Policy
+support_summary_5 <- x %>%
+  group_by(vote) %>%
+  summarize(
+    Total_Voters = n(),
+    Support_Voters = sum(SupportCategory_5 == "Support"),
+    Percentage_Support = (Support_Voters / Total_Voters) * 100
+  )
+
+print(support_summary_5)
+
+# Supporters for Trump Policy
+support_summary_4 <- x %>%
+  group_by(vote) %>%
+  summarize(
+    Total_Voters = n(),
+    Support_Voters = sum(SupportCategory_4 == "Support"),
+    Percentage_Support = (Support_Voters / Total_Voters) * 100
+  )
+
+print(support_summary_4)
+
+sum_support_trump <- support_summary_4 |> summarize(Total = sum(Total_Voters), Support = sum(Support_Voters)) |> mutate(Percentage_Total_Support = Support/Total)
+
+sum_support_trump <- sum_support_trump |> mutate(Oppose = Total - Support)
+print(sum_support_trump)
+
+sum_support_harris <- support_summary_5 |> summarize(Total = sum(Total_Voters), Support = sum(Support_Voters)) |> mutate(Percentage_Total_Support = Support/Total)
+
+sum_support_harris <- sum_support_harris |> mutate(Oppose = Total - Support)
+print(sum_support_harris)
+```
+
+## Analyzing whether policy preferences are predictive of voting behavior
+```{r}
+## Subsetting out non-voters
+x2<- x |> filter(vote!=4)
+
+# Fit multinomial logistic regression
+multimodel <- multinom(vote ~ NJ4 + NJ5+ NJ6 + NJ7+
++            NJ8+ NJ9 +NJ10_1 +
++            NJ11 + NJ12 + D1+ sex +
++           agecat+ education + as.factor(racethn) + D5
++           + D8, data = x2)
+
+# Extract coefficients and standard errors
+summary_model <- summary(multimodel)
+coefs <- summary_model$coefficients
+std_errors <- summary_model$standard.errors
+
+# Compute Z-values
+z_values <- coefs / std_errors
+
+# Compute two-tailed p-values
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+
+
+```
+
+## Creating an interpretable multinomial regression table
+```{r}
+
+# Fit multinomial logistic regression
+multimodel <- multinom(vote ~ NJ4 + NJ5 + NJ6 + NJ7 + NJ8 + NJ9 + NJ10_1 +
+                        NJ11 + NJ12 + D1 + sex + agecat + education + 
+                        as.factor(racethn) + D5 + D8, data = x2)
+
+# Convert model output into a structured data frame
+results_table <- tidy(multimodel, conf.int = TRUE) %>%
+  mutate(Odds_Ratio = exp(estimate)) %>%
+  dplyr::select(y.level, term, estimate, std.error, statistic, p.value, conf.low, conf.high)
+
+# Rename columns
+results_table <- results_table %>%
+  rename(`Outcome` = y.level,
+         `Variable` = term,
+         `Coef.` = estimate, 
+         `Std. Err.` = std.error, 
+         `Z` = statistic, 
+         `P>|z|` = p.value,
+         `[95% Conf. Interval] Lower` = conf.low,
+         `[95% Conf. Interval] Upper` = conf.high)
+
+# Format p-values to adjust for small values
+results_table <- results_table %>%
+  mutate(`P>|z|` = ifelse(`P>|z|` < 0.0001, format(`P>|z|`, scientific = TRUE, digits = 2), 
+                          round(`P>|z|`, 4)))
+
+# Format numeric values to 4 decimal places
+results_table <- results_table %>%
+  mutate(across(where(is.numeric), ~round(., 4)))
+
+# Print table using knitr::kable() for better formatting
+kable(results_table, format = "pipe", align = "r", caption = "Multinomial Logistic Regression Results")
+
+```
+
+## Creating Stacked Barplot Dataframes for Visual Aid
+```{r}
+
+partisan_trump <- x |> group_by(D8, NJ4) |> summarise(Count = n(), .groups = "drop") |> filter(D8 ==1|D8==2)
+
+## DF for Trump Policy Bar amongst Republicans
+R_trump <- partisan_trump |> filter(D8 ==1) |> mutate(Percentage = Count / sum(Count) * 100)
+
+sum(unique(R_trump$Percentage)) ## checking for accuracy
+
+## DF for Trump Policy Bar amongst Democrats
+D_trump <- partisan_trump |> filter(D8 ==2) |> mutate(Percentage = Count / sum(Count) * 100)
+
+sum(unique(D_trump$Percentage)) ## checking for accuracy
+
+partisan_harris <- x |> group_by(D8, NJ5) |> summarise(Count = n(), .groups = "drop")
+
+R_harris <- partisan_harris |> filter(D8 ==1) |> mutate(Percentage = Count / sum(Count) * 100)
+sum(unique(R_harris$Percentage)) ## checking for accuracy
+
+D_harris <- partisan_harris |> filter(D8 ==2) |> mutate(Percentage = Count / sum(Count) * 100)
+sum(unique(D_harris$Percentage)) ## checking for accuracy
+
+all_american_trump <- x |> group_by(NJ4) |> summarise(Count = n(), .groups = "drop") %>%
+  mutate(Percentage = Count / sum(Count) * 100) ## Use to plot horizontal barchart
+
+all_american_harris <- x |> group_by(NJ5) |> summarise(Count = n(), .groups = "drop") %>%
+  mutate(Percentage = Count / sum(Count) * 100) ## Use to plot horizontal barchart
+
+## If all dataframes are accurate, then the value 100 should be printed 4 times
+
+```
+
+## Reorganizing these Dataframes for Subsequent Plots
+```{r}
+# Add a new column to specify the group
+R_trump <- R_trump |> mutate(Group = "Republicans")
+D_trump <- D_trump |> mutate(Group = "Democrats")
+all_american_trump <- all_american_trump |> mutate(Group = "All Americans")
+
+# Combine into one dataframe
+stacked_data <- bind_rows(R_trump, D_trump, all_american_trump)
+
+# Rename NJ4 for better readability
+stacked_data$NJ4 <- factor(stacked_data$NJ4, 
+                                      levels = c("1", "2", "3", "4", "5"),
+                                      labels = c("Completely Opposed", 
+                                                              "Somewhat Opposed", 
+                                                              "Neutral", 
+                                                              "Somewhat Supportive", 
+                                                              "Completely Supportive"))
+```
+
+## Plotting Trump Policy
+```{r}
+ggplot(stacked_data, aes(x = Group, y = Percentage, fill = NJ4)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = paste0(round(Percentage, 0), "%")),
+            position = position_stack(vjust = 0.5),  # Center labels within each section
+            size = 5,   # Adjust text size
+            color = "white",  # White text for better contrast
+            fontface = "bold") +  # Make the labels bold+
+  # Formatting
+  coord_flip() +  # Makes the bar horizontal
+  scale_fill_manual(values = c("Completely Opposed" = "#440154FF",
+                                "Somewhat Opposed" = "#3B528BFF",
+                                "Neutral" = "#21908CFF",
+                                "Somewhat Supportive" = "#5DC863FF",
+                                "Completely Supportive" = "#800000")) +
+  labs(
+    title = "American Opinions on Trump's Proposed Social Security Plan \n",
+    subtitle = "How do you feel about plans to eliminate the partial income taxation of Social Security benefits for seniors earning more than \n 34,000 USD annually (or 44,000 USD total for married 
+couples)? 
+\n",
+    x = "",
+    y = "Percentage",
+    fill = "Response"
+  ) +
+  
+  theme_minimal(base_size = 8) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle=element_text(hjust = 0.5),
+    panel.grid.major.y = element_blank(),  # Remove y-axis grid lines
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),  # Remove x-axis text (since groups are already labeled)
+    axis.ticks.x = element_blank(),
+    legend.position = "top"  # Move legend to top
+  )
+
+ggsave("descriptive_trump.png", width = 7, height = 5, dpi = 600)
+```
+## Organizing Data for Harris
+```{r}
+# Add a new column to specify the group
+R_harris <- R_harris |> mutate(Group = "Republicans")
+D_harris <- D_harris |> mutate(Group = "Democrats")
+all_american_harris <- all_american_harris |> mutate(Group = "All Americans")
+
+# Combine into one dataframe
+stacked_data <- bind_rows(R_harris, D_harris, all_american_harris)
+
+# Rename NJ4 for better readability
+stacked_data$NJ5 <- factor(stacked_data$NJ5, 
+                                      levels = c("1", "2", "3", "4", "5"),
+                                      labels = c("Completely Opposed", 
+                                                              "Somewhat Opposed", 
+                                                              "Neutral", 
+                                                              "Somewhat Supportive", 
+                                                              "Completely Supportive"))
+
+```
+
+##Plotting Harris
+```{r}
+ggplot(stacked_data, aes(x = Group, y = Percentage, fill = NJ5)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = paste0(round(Percentage, 0), "%")),
+            position = position_stack(vjust = 0.5),  # Center labels within each section
+            size = 5,   # Adjust text size
+            color = "white",  # White text for better contrast
+            fontface = "bold") +  # Make the labels bold+
+  # Formatting
+  coord_flip() +  # Makes the bar horizontal
+  scale_fill_manual(values = c("Completely Opposed" = "#440154FF",
+                                "Somewhat Opposed" = "#3B528BFF",
+                                "Neutral" = "#21908CFF",
+                                "Somewhat Supportive" = "#5DC863FF",
+                                "Completely Supportive" = "#800000")) +
+  labs(
+    title = "American Opinions on Harris's Proposed Social Security Plan \n",
+    subtitle = "How do you feel about plans to add a new tier of Social Security tax collection for Americans within the highest income strata? \n",
+    x = "",
+    y = "Percentage",
+    fill = "Response"
+  ) +
+  
+  theme_minimal(base_size = 10) +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.subtitle=element_text(hjust = 0.5),
+    panel.grid.major.y = element_blank(),  # Remove y-axis grid lines
+    panel.grid.minor = element_blank(),
+    axis.text.x = element_blank(),  # Remove x-axis text (since groups are already labeled)
+    axis.ticks.x = element_blank(),
+    legend.position = "top"  # Move legend to top
+  )
+
+ggsave("descriptive_harris.png", width = 7, height = 5, dpi = 600)
+```
+
+## Transferring Regression Tables to Word
+
+## Ordinal Regression 1: Importance
+```{r}
+
+coef(summary(ordinal_model_imp))
+coef_table <- as.data.frame(coef(summary(ordinal_model_imp)))
+print(coef_table)
+
+colnames(coef_table) <- c("Estimate", "Std. Error", "z value", "p value")
+
+
+
+coef_table <- coef_table %>%
+  mutate(`p value` = ifelse(`p value` < 0.0001, format(`p value`, scientific = TRUE, digits = 2), 
+                            round(`p value`, 4))) 
+
+# Convert to flextable
+ft <- flextable(coef_table) %>%
+  colformat_num(j = c("Estimate", "Std. Error", "z value"), digits = 4) %>%  # Round other numbers
+  colformat_char(j = "p value") %>%  # Ensure p-values are treated as text
+  autofit()
+
+# Save as a Word document
+save_as_docx(ft, path = "ordinal_regression_results_1.docx")
+
+```
+
+##Trump Ordinal Model
+```{r}
+
+coef(summary(ordinal_model_t_cutoff_no))
+coef_table <- as.data.frame(coef(summary(ordinal_model_t_cutoff_no)))
+print(coef_table)
+
+colnames(coef_table) <- c("Estimate", "Std. Error", "z value", "p value")
+
+
+
+
+coef_table <- coef_table %>%
+  mutate(`p value` = ifelse(`p value` < 0.0001, format(`p value`, scientific = TRUE, digits = 2), 
+                            round(`p value`, 4))) 
+
+# Convert to flextable
+ft <- flextable(coef_table) %>%
+  colformat_num(j = c("Estimate", "Std. Error", "z value"), digits = 4) %>%  # Round other numbers
+  colformat_char(j = "p value") %>%  # Ensure p-values are treated as text
+  autofit()
+
+# Save as a Word document
+save_as_docx(ft, path = "ordinal_regression_results_t.docx")
+```
+
+## Harris Ordinal Model
+```{r}
+
+coef(summary(ordinal_model_h))
+coef_table <- as.data.frame(coef(summary(ordinal_model_h)))
+print(coef_table)
+
+colnames(coef_table) <- c("Estimate", "Std. Error", "z value", "p value")
+
+
+
+
+coef_table <- coef_table %>%
+  mutate(`p value` = ifelse(`p value` < 0.0001, format(`p value`, scientific = TRUE, digits = 2), 
+                            round(`p value`, 4))) 
+
+# Convert to flextable
+ft <- flextable(coef_table) %>%
+  colformat_num(j = c("Estimate", "Std. Error", "z value"), digits = 4) %>%  # Round other numbers
+  colformat_char(j = "p value") %>%  # Ensure p-values are treated as text
+  autofit()
+
+# Save as a Word document
+save_as_docx(ft, path = "ordinal_regression_results_h.docx")
+
+summary(ordinal_model_h)
+```
+
+## Exporting multinomial regression to word
+```{r}
+
+# Create a flextable for Word export
+flex_table <- flextable(results_table) %>%
+  theme_vanilla() %>%  # Clean professional styling
+  autofit()
+
+# Save table to a Word document
+doc <- read_docx() %>%  # Create a new Word document
+  body_add_flextable(flex_table) %>%
+  body_add_par(" ")  # Add space after the table
+
+print(doc, target = "Multinomial_Regression_Results.docx")
+
+# Show the table in RStudio
+flex_table
+```
+
